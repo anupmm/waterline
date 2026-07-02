@@ -1,0 +1,12 @@
+# BLS CPI release schedule. Source: https://www.bls.gov/schedule/news_release/cpi.htm
+# period = reference month; date = scheduled 8:30 AM ET release.
+# PROVISIONAL: 2026 dates have slipped twice already (docs/verify-cpi.md §2).
+# The owner re-verifies upcoming dates at ~T-7; the loop freezes at T-3 based
+# on this file, and a freeze stands even if the date later moves.
+releases:
+  - {period: 2026-06, date: 2026-07-14}
+  - {period: 2026-07, date: 2026-08-12}
+  - {period: 2026-08, date: 2026-09-11}
+  - {period: 2026-09, date: 2026-10-14}
+  - {period: 2026-10, date: 2026-11-10}
+  - {period: 2026-11, date: 2026-12-10}

@@ -1,0 +1,62 @@
+# The daily loop: freeze at T-3, resolve on print day, commit artifacts,
+# cut freeze releases (server-timestamped proof), then rebuild the site.
+# Runs at 14:10 UTC = 9:10/10:10 AM ET, after the 8:30 AM ET prints.
+name: loop
+on:
+  schedule:
+    - cron: "10 14 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: loop
+  cancel-in-progress: false
+
+jobs:
+  loop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+
+      - name: decide and act
+        id: loop
+        env:
+          BLS_API_KEY: ${{ secrets.BLS_API_KEY }}
+        run: uv run python scripts/loop.py
+
+      - name: commit loop artifacts
+        run: |
+          git config user.name "waterline-loop"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || { git commit -m "loop: $(date -u +%F)"; git push; }
+
+      - name: cut freeze releases
+        if: steps.loop.outputs.frozen != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for p in $(echo "${{ steps.loop.outputs.frozen }}" | tr ',' ' '); do
+            notes=$(uv run python -c "
+          import json
+          f = json.load(open('forecasts/cpi/$p.json'))
+          pc = f['percentiles']
+          print(f\"Core CPI {f['period']} frozen at p10 {pc['p10']:+.3f} / p50 {pc['p50']:+.3f} / p90 {pc['p90']:+.3f} pct m/m.\")
+          print(f\"Scheduled release: {f['release_date']}. Model sha256 {f['model_sha256'][:12]}, commit {f['git_commit'][:8]}.\")
+          print('This release timestamp is the public proof the forecast predates the print. Full assumptions: forecasts/cpi/$p.json')
+          ")
+            gh release create "freeze/cpi-$p" \
+              --title "Freeze: core CPI $p" \
+              --notes "$notes" \
+              --target "$(git rev-parse HEAD)"
+          done
+
+      - name: rebuild site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run site.yml --ref main

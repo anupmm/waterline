@@ -30,6 +30,10 @@ SERIES = {
 
 
 def load_env_key(root: str | Path = ".") -> str | None:
+    import os
+
+    if os.environ.get("BLS_API_KEY"):  # CI: Actions secret
+        return os.environ["BLS_API_KEY"].strip()
     env = Path(root) / ".env"
     if not env.exists():
         return None
@@ -46,8 +50,11 @@ def fetch_levels(
     end_year: int,
     key: str | None = None,
     cache_dir: str | Path = "data/bls",
+    refresh: bool = False,
 ) -> dict[str, dict[str, float]]:
-    """Return {series_id: {"YYYY-MM": index_level}}. Disk-cached by request."""
+    """Return {series_id: {"YYYY-MM": index_level}}. Disk-cached by request;
+    refresh=True re-fetches and overwrites the cache (resolve day needs the
+    just-published print, and the committed cache then records what we saw)."""
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     req_key = hashlib.sha256(
@@ -55,7 +62,7 @@ def fetch_levels(
     ).hexdigest()[:16]
     cache_file = cache_dir / f"levels_{start_year}_{end_year}_{req_key}.json"
 
-    if cache_file.exists():
+    if cache_file.exists() and not refresh:
         raw = json.loads(cache_file.read_text(encoding="utf-8"))
     else:
         payload: dict = {
