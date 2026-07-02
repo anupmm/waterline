@@ -1,0 +1,23 @@
+# Shared assumption registry. Authored by scripts/author_cpi.py — edit via PR.
+
+shelter_mom:
+  value: {range: [0.212, 0.39]}
+  unit: pct_mom
+  epistemic_type: benchmarked
+  provenance: trailing-12m empirical p10/p90 of BLS CUSR0000SAH1, 2025-04..2026-05, authored 2026-07-02
+  # window includes Oct-2025..Apr-2026 shelter imputation artifacts (see docs/verify-cpi.md item 6.3)
+  owner: waterline-bot
+
+supercore_mom:
+  value: {range: [0.194, 0.4]}
+  unit: pct_mom
+  epistemic_type: benchmarked
+  provenance: trailing-12m empirical p10/p90 of BLS CUSR0000SASL2RS, 2025-04..2026-05, authored 2026-07-02
+  owner: waterline-bot
+
+core_goods_mom:
+  value: {range: [-0.031, 0.212]}
+  unit: pct_mom
+  epistemic_type: benchmarked
+  provenance: trailing-12m empirical p10/p90 of BLS CUSR0000SACL1E, 2025-04..2026-05, authored 2026-07-02
+  owner: waterline-bot

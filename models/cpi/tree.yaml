@@ -1,0 +1,33 @@
+# US core CPI m/m driver tree. Authored by scripts/author_cpi.py — edit via PR.
+# Weights: least-squares reconstruction of CUSR0000SA0L1E m/m from components, 2022-04..2026-05 (48 months), resid_std=0.045pp, R2=0.872, authored 2026-07-02
+# Resolution rule: models/cpi/resolution.md
+name: us-core-cpi-mom
+output: core_cpi_mom
+unit: pct_mom
+nodes:
+  shelter_mom:
+    type: assumption
+    ref: shelter_mom
+  supercore_mom:
+    type: assumption
+    ref: supercore_mom
+  core_goods_mom:
+    type: assumption
+    ref: core_goods_mom
+  decomposition_resid:
+    # what the 3-component reconstruction cannot explain; omitting it makes
+    # the interval dishonestly narrow (measured in the weight fit above)
+    type: assumption
+    value: {normal: {mean: 0.0, sd: 0.0446}}
+    unit: pct_mom
+    epistemic_type: benchmarked
+    provenance: residual std of the weight fit, 2022-04..2026-05
+    owner: waterline-bot
+  core_cpi_mom:
+    type: transform
+    fn: weighted_sum
+    inputs:
+      shelter_mom: 0.5174
+      supercore_mom: 0.1927
+      core_goods_mom: 0.2664
+      decomposition_resid: 1.0
