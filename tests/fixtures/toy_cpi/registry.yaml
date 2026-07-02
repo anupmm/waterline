@@ -1,0 +1,6 @@
+shelter_mom:
+  value: {range: [0.25, 0.45]}
+  unit: pct_mom
+  epistemic_type: benchmarked
+  provenance: https://example.com/trailing-12m-shelter
+  owner: waterline-bot

@@ -1,0 +1,29 @@
+# Toy CPI tree for round-trip testing only — NOT the real model.
+# Weights are illustrative, not BLS relative importance.
+name: toy-core-cpi-mom
+output: core_cpi_mom
+unit: pct_mom
+nodes:
+  shelter_mom:
+    type: assumption
+    ref: shelter_mom
+  used_cars_mom:
+    type: assumption
+    value: {range: [-1.0, 0.5]}
+    unit: pct_mom
+  core_services_ex_shelter_mom:
+    type: assumption
+    value: {range: [0.2, 0.4]}
+    unit: pct_mom
+  core_goods_ex_used_cars_mom:
+    type: assumption
+    value: {normal: {mean: 0.0, sd: 0.1}}
+    unit: pct_mom
+  core_cpi_mom:
+    type: transform
+    fn: weighted_sum
+    inputs:
+      shelter_mom: 0.44
+      used_cars_mom: 0.03
+      core_services_ex_shelter_mom: 0.33
+      core_goods_ex_used_cars_mom: 0.20
