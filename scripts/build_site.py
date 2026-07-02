@@ -118,6 +118,30 @@ def main() -> int:
     if not feed:
         feed = "<p class='muted'>No resolved prints yet. The first freeze is the heartbeat; the first readout appears here after the print.</p>"
 
+    # --- simulated backfill ---
+    backtest_html = "<p class='muted'>No backtest file.</p>"
+    bt_file = ROOT / "docs" / "backtest-cpi.json"
+    if bt_file.exists():
+        bt = json.loads(bt_file.read_text(encoding="utf-8"))
+        bs = bt["summary"]
+        btrows = "".join(
+            f"<tr><td>{esc(r['period'])}</td><td class='num'>{r['p10']:+.3f}</td>"
+            f"<td class='num'>{r['p50']:+.3f}</td><td class='num'>{r['p90']:+.3f}</td>"
+            f"<td class='num'>{r['actual']:+.3f}</td>"
+            f"<td>{'&#10003;' if r['hit'] else '&#10007;'}</td></tr>"
+            for r in bt["rows"]
+        )
+        backtest_html = f"""
+        <p class="muted"><strong>Simulated, not frozen.</strong> These forecasts were generated
+        retroactively (walk-forward, using only data available before each print — same code path
+        as live authoring) to show what the loop produces. They carry no timestamp proof and are
+        kept strictly separate from the live calibration ledger below.</p>
+        <p>{bs['n']} prints &middot; model p50 MAE <strong>{bs['mae_model']:.4f}pp</strong>
+        vs naive-last {bs['mae_naive_last']:.4f}pp and trailing-6m {bs['mae_trailing6']:.4f}pp
+        &middot; 80% interval coverage <strong>{bs['coverage_80']:.0%}</strong>
+        &middot; <a href="{REPO}/blob/main/docs/backtest-cpi.md">full report</a></p>
+        <table><tr><th>period</th><th>p10</th><th>p50</th><th>p90</th><th>actual</th><th>hit</th></tr>{btrows}</table>"""
+
     # --- calibration ---
     cal_html = "<p class='muted'>No calibration data until the first print resolves.</p>"
     cal_file = ROOT / "calibration/cpi.json"
@@ -161,7 +185,10 @@ and your track record accrues under your GitHub handle.</p>
 <h2>Resolutions</h2>
 {feed}
 
-<h2>Calibration ledger</h2>
+<h2>Simulated backfill (walk-forward backtest)</h2>
+{backtest_html}
+
+<h2>Calibration ledger (live frozen forecasts only)</h2>
 {cal_html}
 
 <footer><p>Built {esc(today.isoformat())} by the loop. All data from primary public sources (BLS).

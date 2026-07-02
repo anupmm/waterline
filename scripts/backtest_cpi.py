@@ -136,8 +136,30 @@ def main() -> int:
     ]
     out = ROOT / "docs" / "backtest-cpi.md"
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    import json
+
+    (ROOT / "docs" / "backtest-cpi.json").write_text(
+        json.dumps(
+            {
+                "generated": date.today().isoformat(),
+                "seed": SEED,
+                "summary": {
+                    "n": n,
+                    "mae_model": mae_model,
+                    "mae_naive_last": mae_naive,
+                    "mae_trailing6": mae_t6,
+                    "coverage_80": coverage,
+                    "bias": bias,
+                },
+                "rows": rows,
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
     print("\n".join(lines))
-    print(f"\nwrote {out}")
+    print(f"\nwrote {out} and backtest-cpi.json")
     return 0
 
 
