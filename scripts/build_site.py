@@ -61,6 +61,15 @@ def main() -> int:
     # --- next print card ---
     upcoming = [r for r in load_schedule(ROOT) if r.period not in actuals]
     card = ""
+    annualized = 100 * ((1 + p["p50"] / 100) ** 12 - 1)
+    units_note = (
+        '<p class="muted">All figures are the seasonally adjusted <strong>month-over-month</strong> '
+        "% change in core CPI — the number the BLS release headline reports. A "
+        f"+{p['p50']:.2f}% month compounds to &asymp;{annualized:.1f}% annualized; the "
+        '"~3%" inflation figure quoted in the news is the separate year-over-year measure. '
+        "p10/p50/p90: 10% chance the print lands below p10, even odds around p50, "
+        "10% chance above p90 — the p10&ndash;p90 band is an 80% interval.</p>"
+    )
     if upcoming:
         nxt = upcoming[0]
         days = (nxt.date - today).days
@@ -69,15 +78,18 @@ def main() -> int:
             fp = fz["percentiles"]
             status = (
                 f'<strong>FROZEN</strong> {esc(fz["frozen_at"][:10])} at '
-                f'p10 {fp["p10"]:+.3f} / p50 {fp["p50"]:+.3f} / p90 {fp["p90"]:+.3f} '
+                f'p10 {fp["p10"]:+.3f} / p50 {fp["p50"]:+.3f} / p90 {fp["p90"]:+.3f} % m/m '
                 f'(<a href="{REPO}/releases/tag/freeze/cpi-{esc(nxt.period)}">verify timestamp</a>)'
             )
         else:
-            status = f"freezes at T&minus;3 &middot; current model says p10 {p['p10']:+.3f} / p50 {p['p50']:+.3f} / p90 {p['p90']:+.3f}"
+            status = (
+                f"freezes at T&minus;3 &middot; current model says "
+                f"p10 {p['p10']:+.3f} / p50 {p['p50']:+.3f} / p90 {p['p90']:+.3f} % m/m"
+            )
         card = f"""<div class="card">
         <h2>Next print: core CPI {esc(nxt.period)}</h2>
         <p>Scheduled release {esc(nxt.date.isoformat())} (8:30 AM ET) &mdash; {days} day(s) away.</p>
-        <p>{status}</p></div>"""
+        <p>{status}</p>{units_note}</div>"""
 
     # --- model section ---
     rows = ""
