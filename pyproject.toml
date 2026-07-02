@@ -1,7 +1,7 @@
 [project]
 name = "waterline"
 version = "0.1.0"
-description = "Add your description here"
+description = "An open, calibrated driver-model ledger"
 readme = "README.md"
 authors = [
     { name = "Anup", email = "anupmm@gmail.com" }
@@ -11,6 +11,9 @@ dependencies = [
     "numpy>=2.5.0",
     "pyyaml>=6.0.3",
 ]
+
+[project.scripts]
+waterline = "waterline.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.11.2,<0.12.0"]
