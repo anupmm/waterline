@@ -1,0 +1,41 @@
+# Fermi gallery model — UNSCORED here, though unlike golf balls this question
+# has a referee in principle (industry/Census retail data); it could graduate
+# to a resolvable annual metric if a resolution rule names a source.
+question: How much do Americans spend on jeans each year?
+format: usd
+name: us-jeans-annual-revenue
+output: annual_revenue_usd
+unit: USD/year
+nodes:
+  us_population:
+    type: assumption
+    value: 335.0e+6
+    epistemic_type: benchmarked
+    provenance: Census resident population, mid-2020s
+    owner: waterline-bot
+  buyers_fraction:
+    type: assumption
+    value: {range: [0.45, 0.8]}
+    epistemic_type: guess
+    provenance: share of people who buy at least one pair in a year
+    owner: waterline-bot
+  pairs_per_buyer_per_year:
+    type: assumption
+    value: {range: [0.7, 2.0]}
+    epistemic_type: guess
+    provenance: purchase frequency among buyers
+    owner: waterline-bot
+  avg_price_usd:
+    type: assumption
+    value: {range: [30, 70]}
+    epistemic_type: benchmarked
+    provenance: blended mass-market and premium retail price points
+    owner: waterline-bot
+  pairs_sold:
+    type: transform
+    fn: product
+    inputs: [us_population, buyers_fraction, pairs_per_buyer_per_year]
+  annual_revenue_usd:
+    type: transform
+    fn: product
+    inputs: [pairs_sold, avg_price_usd]

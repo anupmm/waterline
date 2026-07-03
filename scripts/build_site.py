@@ -18,6 +18,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import markdown
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -78,21 +79,34 @@ def fmt(metric: str, v: float) -> str:
     return f"{v:+.3f}" if metric == "cpi" else f"{v:,.0f}"
 
 
+def humanize(v: float, kind: str) -> str:
+    prefix = "$" if kind == "usd" else ""
+    a = abs(v)
+    if a >= 1e9:
+        s = f"{v / 1e9:.1f} billion"
+    elif a >= 1e6:
+        s = f"{v / 1e6:.1f} million"
+    elif a >= 1e3:
+        s = f"{v / 1e3:.0f} thousand"
+    else:
+        s = f"{v:,.0f}"
+    return prefix + s
+
+
 def load_dir(d: Path) -> dict[str, dict]:
     if not d.exists():
         return {}
     return {f.stem: json.loads(f.read_text(encoding="utf-8")) for f in sorted(d.glob("*.json"))}
 
 
-def model_details_html(model, metric: str) -> str:
+def model_details_html(model, valfmt) -> str:
     rows = ""
     for node in sorted(model.input_nodes, key=lambda n: n.name):
         q10, q50, q90 = (node.dist.quantile(q) for q in (0.10, 0.50, 0.90))
-        rng = (
-            f"{fmt(metric, q50)} (point)"
-            if node.dist.is_point
-            else f"{fmt(metric, q10)} &hellip; {fmt(metric, q90)}"
-        )
+        # per-node values may live on a different scale than the output
+        # (fractions, unit volumes), so format compactly and scale-agnostically
+        nf = lambda v: f"{v:,.3g}"  # noqa: E731
+        rng = f"{nf(q50)} (point)" if node.dist.is_point else f"{nf(q10)} &hellip; {nf(q90)}"
         rows += (
             f"<tr><td><code>{esc(node.name)}</code></td><td>{badge(node.epistemic_type)}</td>"
             f"<td class='num'>{rng}</td><td class='prov'>{esc(node.provenance or node.source or '')}</td></tr>"
@@ -102,7 +116,7 @@ def model_details_html(model, metric: str) -> str:
     bars = "".join(
         f"<div class='trow'><div class='tlabel'><code>{esc(t.node)}</code></div>"
         f"<div class='tbar'><div class='tfill' style='width:{100 * t.spread / max_spread:.0f}%'></div></div>"
-        f"<div class='tval'>{fmt(metric, t.spread).lstrip('+')}</div>{badge(t.epistemic_type)}</div>"
+        f"<div class='tval'>{valfmt(t.spread).lstrip('+$')}</div>{badge(t.epistemic_type)}</div>"
         for t in tornado
     )
     return f"""
@@ -189,6 +203,26 @@ def main() -> int:
 
         days = (rel.date - today).days
         question = disp["question"](rel.period)
+
+        competing = ""
+        if m == "claims":
+            values = fetch_series(ICSA, cache_dir=ROOT / "data/fred")
+            hist = [values[k] for k in sorted(values)]
+            base_src = fz.get("baselines") if fz else None
+            baselines = base_src or {
+                "naive_last": hist[-1],
+                "mean_4wk": float(sum(hist[-4:]) / 4),
+            }
+            competing = (
+                "<p class='competing'>Competing models on this question, frozen on the same terms: "
+                + " &middot; ".join(
+                    f"<strong>{esc(name.replace('_', '-'))}</strong> {disp['value'](v)}"
+                    for name, v in baselines.items()
+                )
+                + " <span class='muted'>(on the backtest, naive-last currently beats the driver "
+                "model — each resolution scores them all)</span></p>"
+            )
+
         sections += f"""
 <section class="metric">
 <p class="topic">{esc(disp['topic'])}</p>
@@ -200,9 +234,9 @@ def main() -> int:
 </div>
 <p class="when">{esc(disp['value_note'])} &middot; official answer
 {esc(rel.date.isoformat())} (8:30 AM ET), {days} day(s) from now.</p>
-
+{competing}
 <details><summary>The model — every assumption, colored by how much to trust it</summary>
-{model_details_html(model, m)}
+{model_details_html(model, disp['value'])}
 <p class="muted">Resolution rule: <a href="{REPO}/blob/main/models/{m}/resolution.md">what officially settles this number</a>.
 Disagree with an assumption? <a href="{REPO}">Edit one YAML value and open a PR</a> — CI comments your
 exact forecast delta, and your track record accrues under your GitHub handle.</p>
@@ -210,6 +244,32 @@ exact forecast delta, and your track record accrues under your GitHub handle.</p
 
 <details><summary>Track record — how past forecasts scored</summary>
 {track_record_html(m)}
+</details>
+</section>"""
+
+    # --- fermi gallery: decompositions without a referee, never scored ---
+    fermi_cards = ""
+    for tree in sorted((ROOT / "models/fermi").glob("*/tree.yaml")):
+        doc = yaml.safe_load(tree.read_text(encoding="utf-8"))
+        model = build_model(doc)
+        p = run(model, seed=SEED).percentiles()
+        kind = doc.get("format", "count")
+        vf = lambda v, k=kind: humanize(v, k)  # noqa: E731
+        fermi_cards += f"""
+<section class="metric fermi">
+<p class="topic">Fermi gallery</p>
+<h2>{esc(doc.get('question', doc['name']))}</h2>
+<div class="answer">
+  <span class="big">{vf(p['p50'])}</span>
+  <span class="band">80% band: {vf(p['p10'])} to {vf(p['p90'])}</span>
+  <span class="chip">unscored &mdash; no referee</span>
+</div>
+<p class="when">Computable, not observable: no official number will ever settle this, so it is
+never frozen or scored. It exists to be inspected and forked.</p>
+<details><summary>The decomposition</summary>
+{model_details_html(model, vf)}
+<p class="muted"><a href="{REPO}/blob/main/models/fermi/{esc(tree.parent.name)}/tree.yaml">tree.yaml</a>
+&mdash; disagree with a guess? Fork it.</p>
 </details>
 </section>"""
 
@@ -240,6 +300,8 @@ Every forecast is an open model you can inspect and fork — not a black box.
 {sections}
 
 {feed_section}
+
+{fermi_cards}
 
 <footer>
 <p><strong>How this works.</strong> Each forecast is a driver model in a public git repo. Days before
@@ -278,6 +340,8 @@ section.metric h2 { margin:.2rem 0 .8rem; font-size:1.25rem }
   color:var(--muted); background:#f7fafc }
 .chip.frozen { border-color:#1e8449; color:#1e8449 }
 .when { color:var(--muted); font-size:.9rem }
+.competing { font-size:.9rem }
+section.fermi { background:#fbfaf7 }
 details { margin:.8rem 0; border-top:1px solid var(--line); padding-top:.6rem }
 summary { cursor:pointer; color:var(--accent); font-size:.95rem }
 details[open] summary { margin-bottom:.6rem }

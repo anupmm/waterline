@@ -1,0 +1,41 @@
+# Fermi gallery model — UNSCORED. No referee exists: nobody will ever fill a
+# 747 with golf balls and count. The answer is computable, not observable, so
+# freeze/resolve/calibration do not apply. It exists to be inspected and forked.
+question: How many golf balls fit inside a Boeing 747?
+format: count
+name: golf-balls-747
+output: golf_balls
+unit: balls
+nodes:
+  interior_volume_m3:
+    type: assumption
+    value: {range: [700, 1100]}
+    epistemic_type: benchmarked
+    provenance: 747-400 pressurized cabin + cargo volume, public airframe specs
+    owner: waterline-bot
+  usable_fraction:
+    type: assumption
+    value: {range: [0.55, 0.85]}
+    epistemic_type: guess
+    provenance: share of volume not lost to seats, galleys, structure
+    owner: waterline-bot
+  packing_efficiency:
+    type: assumption
+    value: {range: [0.58, 0.68]}
+    epistemic_type: benchmarked
+    provenance: random close packing of equal spheres is ~0.64
+    owner: waterline-bot
+  ball_volume_m3:
+    type: assumption
+    value: 4.07e-05
+    epistemic_type: benchmarked
+    provenance: regulation diameter 42.67mm -> 4/3*pi*r^3
+    owner: waterline-bot
+  effective_volume:
+    type: transform
+    fn: product
+    inputs: [interior_volume_m3, usable_fraction, packing_efficiency]
+  golf_balls:
+    type: transform
+    fn: ratio
+    inputs: [effective_volume, ball_volume_m3]

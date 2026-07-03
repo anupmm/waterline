@@ -253,9 +253,17 @@ def freeze_claims(
         release_date = date.fromisoformat(period) + timedelta(days=5)
     values = fetch_series(ICSA, cache_dir=root / "data/fred", refresh=refresh)
     doc, meta = author_claims_doc(values, as_of=as_of)
+    # competing simple models, frozen on equal footing so they can be scored;
+    # naive-last has beaten the structured model on backtest MAE — showing it
+    # is the honesty property, not a courtesy
+    hist = [values[p] for p in sorted(values) if as_of is None or p <= as_of]
+    baselines = {
+        "naive_last": hist[-1],
+        "mean_4wk": float(sum(hist[-4:]) / 4),
+    }
     payload = _forecast_payload(
         build_model(doc), "claims", period, release_date,
-        {"authored_doc": doc, "git_commit": git_head(root)},
+        {"authored_doc": doc, "git_commit": git_head(root), "baselines": baselines},
     )
     _write_forecast(out_root, payload)
     return payload
@@ -294,6 +302,10 @@ def resolve_claims(
                 }
             },
             "unexplained": 0.0,
+        },
+        "baselines": {
+            name: {"forecast": v, "error": actual - v}
+            for name, v in forecast.get("baselines", {}).items()
         },
     }
     _write_actual(out_root, "claims", result)
@@ -340,6 +352,23 @@ def _fmt(metric: str, v: float) -> str:
     return f"{v:+.3f}%" if metric == "cpi" else f"{v:,.0f}"
 
 
+def _baselines_md(metric: str, r: dict) -> str:
+    if not r.get("baselines"):
+        return ""
+    f = lambda v: _fmt(metric, v)  # noqa: E731
+    rows = "".join(
+        f"| {name} | {f(v['forecast'])} | {f(v['error'])} |\n"
+        for name, v in r["baselines"].items()
+    )
+    model_err = f(r["error"])
+    return (
+        "## Competing models, scored on the same frozen terms\n\n"
+        "| model | forecast | error |\n|---|---|---|\n"
+        f"| waterline (driver model) | {f(r['frozen']['p50'])} | {model_err} |\n"
+        f"{rows}\n"
+    )
+
+
 def write_readout(root: Path, metric: str, r: dict) -> Path:
     cal = json.loads((root / f"calibration/{metric}.json").read_text(encoding="utf-8"))
     s = cal["summary"]
@@ -369,7 +398,7 @@ Miss: **{f(r['error'])}**.
 |---|---|---|---|
 {comp_rows}| unexplained | | | {unexplained:+.3f} |
 
-Every frozen assumption and its provenance: `forecasts/{metric}/{r['period']}.json`
+{_baselines_md(metric, r)}Every frozen assumption and its provenance: `forecasts/{metric}/{r['period']}.json`
 and the tagged release.
 
 ## Calibration to date ({title})
