@@ -27,7 +27,7 @@ from waterline.claims_author import author_claims_doc
 from waterline.engine import run, sensitivity
 from waterline.ingest.fred import ICSA, fetch_series
 from waterline.loop import METRICS, SEED, all_releases
-from waterline.model import build_model, load_model
+from waterline.model import InputNode, TransformNode, build_model, load_model
 
 REPO = "https://github.com/anupmm/waterline"
 BADGE = {
@@ -97,6 +97,56 @@ def load_dir(d: Path) -> dict[str, dict]:
     if not d.exists():
         return {}
     return {f.stem: json.loads(f.read_text(encoding="utf-8")) for f in sorted(d.glob("*.json"))}
+
+
+FN_LABEL = {"weighted_sum": "weighted sum of", "sum": "sum of", "product": "product of",
+            "ratio": "ratio of", "linear": "linear in"}
+
+
+def tree_html(model) -> str:
+    """Auto-rendered driver tree from the DAG — a rendering of tree.yaml,
+    regenerated on every build so it can never drift from the model."""
+
+    def render(name: str, weight: float | None = None) -> str:
+        node = model.nodes[name]
+        wtag = f"<span class='muted'> ×{weight:.3g}</span>" if weight is not None else ""
+        if isinstance(node, InputNode):
+            q10, q90 = node.dist.quantile(0.10), node.dist.quantile(0.90)
+            rng = (
+                f"{node.dist.quantile(0.5):,.3g}"
+                if node.dist.is_point
+                else f"{q10:,.3g} … {q90:,.3g}"
+            )
+            return (
+                f"<li><code>{esc(name)}</code>{wtag} {badge(node.epistemic_type)} "
+                f"<span class='num muted'>{rng}</span></li>"
+            )
+        assert isinstance(node, TransformNode)
+        weights = node.params.get("_weights")
+        children = "".join(
+            render(i, w)
+            for i, w in zip(node.inputs, weights or [None] * len(node.inputs))
+        )
+        label = FN_LABEL.get(node.fn, node.fn)
+        return (
+            f"<li><code>{esc(name)}</code>{wtag} <span class='muted'>= {esc(label)}</span>"
+            f"<ul>{children}</ul></li>"
+        )
+
+    return f"<ul class='dtree'>{render(model.output)}</ul>"
+
+
+def derivation_html(model_dir: Path) -> str:
+    md = model_dir / "derivation.md"
+    if not md.exists():
+        return ""
+    return (
+        "<div class='derivation'>"
+        + markdown.markdown(md.read_text(encoding="utf-8"), extensions=["tables"])
+        + f"<p class='muted'>Convention: <code>tree.yaml</code> is the machine-checked model; "
+        f"<code>derivation.md</code> is the author's reasoning. PRs that change one should "
+        f"update the other.</p></div>"
+    )
 
 
 def model_details_html(model, valfmt) -> str:
@@ -235,8 +285,10 @@ def main() -> int:
 <p class="when">{esc(disp['value_note'])} &middot; official answer
 {esc(rel.date.isoformat())} (8:30 AM ET), {days} day(s) from now.</p>
 {competing}
-<details><summary>The model — every assumption, colored by how much to trust it</summary>
+<details><summary>The model — the driver tree, every assumption colored by how much to trust it</summary>
+{tree_html(model)}
 {model_details_html(model, disp['value'])}
+{derivation_html(ROOT / "models" / m)}
 <p class="muted">Resolution rule: <a href="{REPO}/blob/main/models/{m}/resolution.md">what officially settles this number</a>.
 Disagree with an assumption? <a href="{REPO}">Edit one YAML value and open a PR</a> — CI comments your
 exact forecast delta, and your track record accrues under your GitHub handle.</p>
@@ -266,8 +318,10 @@ exact forecast delta, and your track record accrues under your GitHub handle.</p
 </div>
 <p class="when">Computable, not observable: no official number will ever settle this, so it is
 never frozen or scored. It exists to be inspected and forked.</p>
-<details><summary>The decomposition</summary>
+<details><summary>The decomposition — driver tree and how it was derived</summary>
+{tree_html(model)}
 {model_details_html(model, vf)}
+{derivation_html(tree.parent)}
 <p class="muted"><a href="{REPO}/blob/main/models/fermi/{esc(tree.parent.name)}/tree.yaml">tree.yaml</a>
 &mdash; disagree with a guess? Fork it.</p>
 </details>
@@ -342,6 +396,11 @@ section.metric h2 { margin:.2rem 0 .8rem; font-size:1.25rem }
 .when { color:var(--muted); font-size:.9rem }
 .competing { font-size:.9rem }
 section.fermi { background:#fbfaf7 }
+.dtree, .dtree ul { list-style:none; margin:.2rem 0; padding-left:0 }
+.dtree ul { border-left:1px solid var(--line); margin-left:.45rem; padding-left:1.1rem }
+.dtree li { margin:.3rem 0 }
+.derivation { border-top:1px dashed var(--line); margin-top:1rem; padding-top:.4rem; font-size:.93rem }
+.derivation h2 { border:none; font-size:1.05rem; margin-top:.6rem }
 details { margin:.8rem 0; border-top:1px solid var(--line); padding-top:.6rem }
 summary { cursor:pointer; color:var(--accent); font-size:.95rem }
 details[open] summary { margin-bottom:.6rem }
