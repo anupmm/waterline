@@ -1,7 +1,9 @@
+# Deploys are deliberately infrequent: the daily loop dispatches this after
+# freeze/resolve, plus manual dispatch when needed. No on-push trigger —
+# the Pages backend is intermittently flaky (actions/deploy-pages#406) and
+# every deploy is exposure; preview locally with scripts/build_site.py.
 name: site
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

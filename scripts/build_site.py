@@ -319,15 +319,17 @@ exact forecast delta, and your track record accrues under your GitHub handle.</p
 <p class="topic">Fermi gallery</p>
 <h2>{esc(doc.get('question', doc['name']))}</h2>
 <div class="answer">
+  <span class="band">best guess</span>
   <span class="big">&asymp; {vf(p['p50'])}</span>
-  <span class="band">plausibly {vf(p['p10'])} to {vf(p['p90'])}</span>
+  <span class="band">low {vf(p['p10'])} &middot; high {vf(p['p90'])}</span>
   <span class="chip">unscored &mdash; no referee</span>
 </div>
-<p class="when">Computable, not observable: no official number will ever settle this, so it is
-never frozen or scored. It exists to be inspected and forked.</p>
+<p class="when">Low and high are not bounds &mdash; expect reality to beat each about one time in ten.
+Computable, not observable: no official number settles this, so it is never frozen or scored.
+It exists to be inspected and forked.</p>
 <details><summary>The decomposition — driver tree and how it was derived</summary>
 {tree_html(model)}
-{model_details_html(model, vf, range_label="plausible low &hellip; high")}
+{model_details_html(model, vf, range_label="low &hellip; high")}
 {derivation_html(tree.parent)}
 <p class="muted"><a href="{REPO}/blob/main/models/fermi/{esc(tree.parent.name)}/tree.yaml">tree.yaml</a>
 &mdash; disagree with a guess? Fork it.</p>
