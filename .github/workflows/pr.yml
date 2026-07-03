@@ -1,0 +1,47 @@
+# Every PR: run tests, then compute and post the forecast delta.
+# The delta comment is the contributor write path's front door — an edited
+# assumption becomes a legible act of forecasting.
+name: pr
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+
+  forecast-delta:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+
+      - name: compute delta vs base
+        id: delta
+        run: |
+          uv run python scripts/pr_delta.py \
+            --base-ref ${{ github.event.pull_request.base.sha }} \
+            --out delta.md
+          cat delta.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: comment on PR
+        # fork PRs have a read-only token; the step summary above still shows the delta
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --edit-last --body-file delta.md \
+          || gh pr comment ${{ github.event.pull_request.number }} \
+            --body-file delta.md

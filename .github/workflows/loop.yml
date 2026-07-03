@@ -56,6 +56,42 @@ jobs:
               --target "$(git rev-parse HEAD)"
           done
 
+      - name: re-author assumptions after resolve
+        if: steps.loop.outputs.resolved != ''
+        id: reauthor
+        env:
+          BLS_API_KEY: ${{ secrets.BLS_API_KEY }}
+        run: |
+          uv run python scripts/author_cpi.py
+          uv run python scripts/backtest_cpi.py > /dev/null
+          uv run python scripts/pr_delta.py --base-ref HEAD --out delta.md
+
+      - name: open re-authoring PR
+        if: steps.loop.outputs.resolved != '' && steps.reauthor.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="bot/reauthor-$(date -u +%Y%m%d)"
+          git checkout -b "$BRANCH"
+          git add registry models docs data
+          git commit -m "Re-author CPI assumptions after ${{ steps.loop.outputs.resolved }} print"
+          git push -u origin "$BRANCH"
+          {
+            echo "Trailing windows and fit weights refreshed with the just-resolved"
+            echo "${{ steps.loop.outputs.resolved }} print. Opened automatically by the loop;"
+            echo "merge to adopt, close to keep the previous assumptions."
+            echo ""
+            cat delta.md
+          } > body.md
+          gh pr create --base main --head "$BRANCH" \
+            --title "Re-author CPI assumptions after ${{ steps.loop.outputs.resolved }} print" \
+            --body-file body.md
+          git checkout main
+
+      - name: discard unchanged re-authoring
+        if: steps.loop.outputs.resolved != '' && steps.reauthor.outputs.changed != 'true'
+        run: git checkout -- .
+
       - name: rebuild site
         env:
           GH_TOKEN: ${{ github.token }}
