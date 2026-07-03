@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from waterline.cpi_author import author_assumptions, fit_weights, write_model_files
 from waterline.ingest.bls import SERIES, fetch_levels, load_env_key, mom
-from waterline.loop import decide, freeze_cpi, resolve_cpi
+from waterline.loop import FREEZERS, RESOLVERS, decide, freeze_cpi, resolve_cpi
 
 
 def gh_output(name: str, value: str) -> None:
@@ -90,18 +90,18 @@ def main() -> int:
         return 0
 
     frozen, resolved = [], []
-    for action, period in actions:
+    for action, metric, period in actions:
         if action == "freeze":
-            f = freeze_cpi(ROOT, period)
-            frozen.append(period)
-            print(f"froze {period}: {f['percentiles']} (release {f['release_date']})")
+            f = FREEZERS[metric](ROOT, period)
+            frozen.append(f"{metric}:{period}")
+            print(f"froze {metric} {period}: {f['percentiles']} (release {f['release_date']})")
         elif action == "resolve":
-            r = resolve_cpi(ROOT, period)
+            r = RESOLVERS[metric](ROOT, period)
             if r is None:
-                print(f"{period}: print not available yet, will retry")
+                print(f"{metric} {period}: print not available yet, will retry")
             else:
-                resolved.append(period)
-                print(f"resolved {period}: actual {r['actual']:+.3f}, error {r['error_pp']:+.3f}pp")
+                resolved.append(f"{metric}:{period}")
+                print(f"resolved {metric} {period}: actual {r['actual']}, error {r['error']:+.3f}")
 
     if frozen:
         gh_output("frozen", ",".join(frozen))

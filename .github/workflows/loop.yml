@@ -41,23 +41,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for p in $(echo "${{ steps.loop.outputs.frozen }}" | tr ',' ' '); do
+          for mp in $(echo "${{ steps.loop.outputs.frozen }}" | tr ',' ' '); do
+            m="${mp%%:*}"; p="${mp#*:}"
             notes=$(uv run python -c "
-          import json
-          f = json.load(open('forecasts/cpi/$p.json'))
+          import json, sys
+          from waterline.loop import METRICS
+          m, p = '$m', '$p'
+          f = json.load(open(f'forecasts/{m}/{p}.json'))
           pc = f['percentiles']
-          print(f\"Core CPI {f['period']} frozen at p10 {pc['p10']:+.3f} / p50 {pc['p50']:+.3f} / p90 {pc['p90']:+.3f} pct m/m.\")
-          print(f\"Scheduled release: {f['release_date']}. Model sha256 {f['model_sha256'][:12]}, commit {f['git_commit'][:8]}.\")
-          print('This release timestamp is the public proof the forecast predates the print. Full assumptions: forecasts/cpi/$p.json')
+          unit = METRICS[m]['unit']
+          print(f\"{METRICS[m]['title']} {f['period']} frozen at p10 {pc['p10']:,.3f} / p50 {pc['p50']:,.3f} / p90 {pc['p90']:,.3f} {unit}.\")
+          print(f\"Scheduled release: {f['release_date']}. Commit {f.get('git_commit','?')[:8]}.\")
+          print(f'This release timestamp is the public proof the forecast predates the print. Full assumptions: forecasts/{m}/{p}.json')
           ")
-            gh release create "freeze/cpi-$p" \
-              --title "Freeze: core CPI $p" \
+            gh release create "freeze/$m-$p" \
+              --title "Freeze: $m $p" \
               --notes "$notes" \
               --target "$(git rev-parse HEAD)"
           done
 
       - name: re-author assumptions after resolve
-        if: steps.loop.outputs.resolved != ''
+        if: contains(steps.loop.outputs.resolved, 'cpi:')
         id: reauthor
         env:
           BLS_API_KEY: ${{ secrets.BLS_API_KEY }}
@@ -67,7 +71,7 @@ jobs:
           uv run python scripts/pr_delta.py --base-ref HEAD --out delta.md
 
       - name: open re-authoring PR
-        if: steps.loop.outputs.resolved != '' && steps.reauthor.outputs.changed == 'true'
+        if: contains(steps.loop.outputs.resolved, 'cpi:') && steps.reauthor.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -89,7 +93,7 @@ jobs:
           git checkout main
 
       - name: discard unchanged re-authoring
-        if: steps.loop.outputs.resolved != '' && steps.reauthor.outputs.changed != 'true'
+        if: contains(steps.loop.outputs.resolved, 'cpi:') && steps.reauthor.outputs.changed != 'true'
         run: git checkout -- .
 
       - name: rebuild site

@@ -1,7 +1,8 @@
 """Build the static site into site/ (deployed to GitHub Pages by CI).
 
-One page: current forecast + freeze countdown, the model with epistemic
-colors and tornado, the resolution feed, and the calibration ledger.
+One page, multi-metric: next-print cards, the CPI model with epistemic
+colors and tornado, the resolution feed (all metrics, newest first),
+simulated backfills, and per-metric calibration ledgers.
 Standing constraint: no number without its epistemic color.
 
 Run:  uv run python scripts/build_site.py
@@ -22,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from waterline.engine import run, sensitivity
-from waterline.loop import SEED, load_schedule
+from waterline.loop import METRICS, SEED, all_releases
 from waterline.model import load_model
 
 REPO = "https://github.com/anupmm/waterline"
@@ -42,56 +43,54 @@ def badge(etype: str) -> str:
     return f'<span class="badge" style="background:{color}">{label}</span>'
 
 
+def fmt(metric: str, v: float) -> str:
+    return f"{v:+.3f}" if metric == "cpi" else f"{v:,.0f}"
+
+
+def load_dir(d: Path) -> dict[str, dict]:
+    if not d.exists():
+        return {}
+    return {f.stem: json.loads(f.read_text(encoding="utf-8")) for f in sorted(d.glob("*.json"))}
+
+
 def main() -> int:
     today = datetime.now(ZoneInfo("America/New_York")).date()
+
+    forecasts = {m: load_dir(ROOT / f"forecasts/{m}") for m in METRICS}
+    actuals = {m: load_dir(ROOT / f"actuals/{m}") for m in METRICS}
+
+    # --- next print cards (nearest upcoming release per metric) ---
+    seen = set()
+    cards = ""
+    for rel in sorted(all_releases(ROOT, today), key=lambda r: r.date):
+        if rel.metric in seen or rel.period in actuals[rel.metric] or rel.date < today:
+            continue
+        seen.add(rel.metric)
+        cfg = METRICS[rel.metric]
+        days = (rel.date - today).days
+        fz = forecasts[rel.metric].get(rel.period)
+        if fz:
+            fp = fz["percentiles"]
+            status = (
+                f'<strong>FROZEN</strong> {esc(fz["frozen_at"][:10])} at '
+                f"p10 {fmt(rel.metric, fp['p10'])} / p50 {fmt(rel.metric, fp['p50'])} "
+                f"/ p90 {fmt(rel.metric, fp['p90'])} {esc(cfg['unit'])} "
+                f'(<a href="{REPO}/releases/tag/freeze/{rel.metric}-{esc(rel.period)}">verify timestamp</a>)'
+            )
+        else:
+            status = f"freezes at T&minus;{cfg['freeze_days_before']}."
+        cards += f"""<div class="card">
+        <h2>Next print: {esc(cfg['title'])} {esc(rel.period)}</h2>
+        <p>Scheduled release {esc(rel.date.isoformat())} (8:30 AM ET) &mdash; {days} day(s) away. {status}</p>
+        </div>"""
+
+    # --- CPI model section (committed model; claims is auto-authored at freeze) ---
     model = load_model(ROOT / "models/cpi/tree.yaml", ROOT / "registry/assumptions.yaml")
     res = run(model, seed=SEED)
     p = res.percentiles()
     tornado = sensitivity(model, seed=SEED)
-
-    actuals = {
-        f.stem: json.loads(f.read_text(encoding="utf-8"))
-        for f in sorted((ROOT / "actuals/cpi").glob("*.json"))
-    } if (ROOT / "actuals/cpi").exists() else {}
-    forecasts = {
-        f.stem: json.loads(f.read_text(encoding="utf-8"))
-        for f in sorted((ROOT / "forecasts/cpi").glob("*.json"))
-    } if (ROOT / "forecasts/cpi").exists() else {}
-
-    # --- next print card ---
-    upcoming = [r for r in load_schedule(ROOT) if r.period not in actuals]
-    card = ""
     annualized = 100 * ((1 + p["p50"] / 100) ** 12 - 1)
-    units_note = (
-        '<p class="muted">All figures are the seasonally adjusted <strong>month-over-month</strong> '
-        "% change in core CPI — the number the BLS release headline reports. A "
-        f"+{p['p50']:.2f}% month compounds to &asymp;{annualized:.1f}% annualized; the "
-        '"~3%" inflation figure quoted in the news is the separate year-over-year measure. '
-        "p10/p50/p90: 10% chance the print lands below p10, even odds around p50, "
-        "10% chance above p90 — the p10&ndash;p90 band is an 80% interval.</p>"
-    )
-    if upcoming:
-        nxt = upcoming[0]
-        days = (nxt.date - today).days
-        if nxt.period in forecasts:
-            fz = forecasts[nxt.period]
-            fp = fz["percentiles"]
-            status = (
-                f'<strong>FROZEN</strong> {esc(fz["frozen_at"][:10])} at '
-                f'p10 {fp["p10"]:+.3f} / p50 {fp["p50"]:+.3f} / p90 {fp["p90"]:+.3f} % m/m '
-                f'(<a href="{REPO}/releases/tag/freeze/cpi-{esc(nxt.period)}">verify timestamp</a>)'
-            )
-        else:
-            status = (
-                f"freezes at T&minus;3 &middot; current model says "
-                f"p10 {p['p10']:+.3f} / p50 {p['p50']:+.3f} / p90 {p['p90']:+.3f} % m/m"
-            )
-        card = f"""<div class="card">
-        <h2>Next print: core CPI {esc(nxt.period)}</h2>
-        <p>Scheduled release {esc(nxt.date.isoformat())} (8:30 AM ET) &mdash; {days} day(s) away.</p>
-        <p>{status}</p>{units_note}</div>"""
 
-    # --- model section ---
     rows = ""
     for node in sorted(model.input_nodes, key=lambda n: n.name):
         q10, q50, q90 = (node.dist.quantile(q) for q in (0.10, 0.50, 0.90))
@@ -107,59 +106,78 @@ def main() -> int:
         f"<div class='tval'>{t.spread:.3f}</div>{badge(t.epistemic_type)}</div>"
         for t in tornado
     )
+    units_note = (
+        '<p class="muted">CPI figures are the seasonally adjusted <strong>month-over-month</strong> '
+        "% change in core CPI — the number the BLS release headline reports. A "
+        f"+{p['p50']:.2f}% month compounds to &asymp;{annualized:.1f}% annualized; the "
+        '"~3%" inflation figure in the news is the separate year-over-year measure. '
+        "p10/p50/p90: 10% chance below p10, even odds around p50, 10% above p90 — "
+        "p10&ndash;p90 is an 80% interval.</p>"
+    )
 
-    # --- resolution feed ---
+    # --- resolution feed (all metrics, newest resolution first) ---
+    resolved = []
+    for m in METRICS:
+        for period, a in actuals[m].items():
+            resolved.append((a.get("resolved_at", ""), m, period))
     feed = ""
-    for period in sorted(actuals, reverse=True):
-        md = ROOT / f"readouts/cpi-{period}.md"
+    for _, m, period in sorted(resolved, reverse=True):
+        md = ROOT / f"readouts/{m}-{period}.md"
         if md.exists():
             body = markdown.markdown(md.read_text(encoding="utf-8"), extensions=["tables"])
             feed += f'<div class="card readout">{body}</div>'
     if not feed:
-        feed = "<p class='muted'>No resolved prints yet. The first freeze is the heartbeat; the first readout appears here after the print.</p>"
+        feed = (
+            "<p class='muted'>No resolved prints yet. The first live resolution lands with the "
+            "initial-claims print; readouts appear here automatically.</p>"
+        )
 
-    # --- simulated backfill ---
-    backtest_html = "<p class='muted'>No backtest file.</p>"
-    bt_file = ROOT / "docs" / "backtest-cpi.json"
-    if bt_file.exists():
-        bt = json.loads(bt_file.read_text(encoding="utf-8"))
+    # --- backfills + calibration ---
+    def backtest_block(metric: str, path: Path, cols: tuple[str, str]) -> str:
+        if not path.exists():
+            return ""
+        bt = json.loads(path.read_text(encoding="utf-8"))
         bs = bt["summary"]
-        btrows = "".join(
-            f"<tr><td>{esc(r['period'])}</td><td class='num'>{r['p10']:+.3f}</td>"
-            f"<td class='num'>{r['p50']:+.3f}</td><td class='num'>{r['p90']:+.3f}</td>"
-            f"<td class='num'>{r['actual']:+.3f}</td>"
+        trs = "".join(
+            f"<tr><td>{esc(r['period'])}</td><td class='num'>{fmt(metric, r['p10'])}</td>"
+            f"<td class='num'>{fmt(metric, r['p50'])}</td><td class='num'>{fmt(metric, r['p90'])}</td>"
+            f"<td class='num'>{fmt(metric, r['actual'])}</td>"
             f"<td>{'&#10003;' if r['hit'] else '&#10007;'}</td></tr>"
             for r in bt["rows"]
         )
-        backtest_html = f"""
-        <p class="muted"><strong>Simulated, not frozen.</strong> These forecasts were generated
-        retroactively (walk-forward, using only data available before each print — same code path
-        as live authoring) to show what the loop produces. They carry no timestamp proof and are
-        kept strictly separate from the live calibration ledger below.</p>
-        <p>{bs['n']} prints &middot; model p50 MAE <strong>{bs['mae_model']:.4f}pp</strong>
-        vs naive-last {bs['mae_naive_last']:.4f}pp and trailing-6m {bs['mae_trailing6']:.4f}pp
-        &middot; 80% interval coverage <strong>{bs['coverage_80']:.0%}</strong>
-        &middot; <a href="{REPO}/blob/main/docs/backtest-cpi.md">full report</a></p>
-        <table><tr><th>period</th><th>p10</th><th>p50</th><th>p90</th><th>actual</th><th>hit</th></tr>{btrows}</table>"""
+        second = f" &middot; {cols[1]} {fmt(metric, bs[cols[0]])}" if cols[0] in bs else ""
+        return f"""<h3>{esc(METRICS[metric]['title'])}</h3>
+        <p>{bs['n']} prints &middot; model p50 MAE <strong>{fmt(metric, bs['mae_model'])}</strong>
+        vs naive-last {fmt(metric, bs['mae_naive_last'])}{second}
+        &middot; 80% coverage <strong>{bs['coverage_80']:.0%}</strong>
+        &middot; <a href="{REPO}/blob/main/docs/backtest-{metric}.md">full report</a></p>
+        <table><tr><th>period</th><th>p10</th><th>p50</th><th>p90</th><th>actual</th><th>hit</th></tr>{trs}</table>"""
 
-    # --- calibration ---
-    cal_html = "<p class='muted'>No calibration data until the first print resolves.</p>"
-    cal_file = ROOT / "calibration/cpi.json"
-    if cal_file.exists():
+    backtests = backtest_block("cpi", ROOT / "docs/backtest-cpi.json", ("mae_trailing6", "trailing-6m"))
+    backtests += backtest_block("claims", ROOT / "docs/backtest-claims.json", ("mae_mean4", "4wk-mean"))
+
+    cal_html = ""
+    for m, cfg in METRICS.items():
+        cal_file = ROOT / f"calibration/{m}.json"
+        if not cal_file.exists():
+            continue
         cal = json.loads(cal_file.read_text(encoding="utf-8"))
         s = cal["summary"]
-        if s["n_resolved"]:
-            crows = "".join(
-                f"<tr><td>{esc(r['period'])}</td><td class='num'>{r['p10']:+.3f}</td>"
-                f"<td class='num'>{r['p50']:+.3f}</td><td class='num'>{r['p90']:+.3f}</td>"
-                f"<td class='num'>{r['actual']:+.3f}</td><td class='num'>{r['error_pp']:+.3f}</td>"
-                f"<td>{'&#10003;' if r['in_interval'] else '&#10007;'}</td></tr>"
-                for r in cal["rows"]
-            )
-            cal_html = f"""
-            <p>{s['n_resolved']} resolved &middot; 80% interval coverage <strong>{s['coverage_80']:.0%}</strong>
-            &middot; MAE <strong>{s['mae_pp']:.3f}pp</strong> &middot; bias {s['bias_pp']:+.3f}pp</p>
-            <table><tr><th>period</th><th>p10</th><th>p50</th><th>p90</th><th>actual</th><th>error</th><th>hit</th></tr>{crows}</table>"""
+        if not s["n_resolved"]:
+            continue
+        crows = "".join(
+            f"<tr><td>{esc(r['period'])}</td><td class='num'>{fmt(m, r['p10'])}</td>"
+            f"<td class='num'>{fmt(m, r['p50'])}</td><td class='num'>{fmt(m, r['p90'])}</td>"
+            f"<td class='num'>{fmt(m, r['actual'])}</td><td class='num'>{fmt(m, r['error'])}</td>"
+            f"<td>{'&#10003;' if r['in_interval'] else '&#10007;'}</td></tr>"
+            for r in cal["rows"]
+        )
+        cal_html += f"""<h3>{esc(cfg['title'])}</h3>
+        <p>{s['n_resolved']} resolved &middot; 80% coverage <strong>{s['coverage_80']:.0%}</strong>
+        &middot; MAE <strong>{fmt(m, s['mae'])}</strong> &middot; bias {fmt(m, s['bias'])}</p>
+        <table><tr><th>period</th><th>p10</th><th>p50</th><th>p90</th><th>actual</th><th>error</th><th>hit</th></tr>{crows}</table>"""
+    if not cal_html:
+        cal_html = "<p class='muted'>Empty until the first live frozen forecast resolves.</p>"
 
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -169,29 +187,35 @@ def main() -> int:
 <p class="tag">Forecasts as versioned driver models: frozen before the print, resolved against official data,
 error attributed to named assumptions, calibration public. <a href="{REPO}">Fork it on GitHub</a>.</p></header>
 
-{card}
+{cards}
 
-<h2>The model: US core CPI m/m</h2>
+<h2>The CPI model: US core CPI m/m</h2>
 <p>Weighted decomposition (<a href="{REPO}/blob/main/models/cpi/tree.yaml">tree.yaml</a> &middot;
-<a href="{REPO}/blob/main/models/cpi/resolution.md">resolution rule</a> &middot;
-<a href="{REPO}/blob/main/docs/backtest-cpi.md">backtest</a>).
-Current output: <strong>p10 {p['p10']:+.3f} / p50 {p['p50']:+.3f} / p90 {p['p90']:+.3f}</strong> pct m/m.</p>
+<a href="{REPO}/blob/main/models/cpi/resolution.md">resolution rule</a>).
+Current output: <strong>p10 {p['p10']:+.3f} / p50 {p['p50']:+.3f} / p90 {p['p90']:+.3f}</strong> % m/m.</p>
+{units_note}
 <table><tr><th>assumption</th><th>epistemic status</th><th>q10 &hellip; q90</th><th>provenance</th></tr>{rows}</table>
 <h3>Sensitivity (output p50 spread, one-at-a-time q10&rarr;q90)</h3>
 <div class="tornado">{bars}</div>
-<p class="muted">Disagree with an assumption? Edit one YAML value and open a PR — CI shows your forecast delta,
-and your track record accrues under your GitHub handle.</p>
+<p class="muted">The claims model is simpler — trailing base &times; drift — and is auto-authored at each
+freeze from the latest data (<a href="{REPO}/blob/main/models/claims/resolution.md">resolution rule</a>);
+every frozen input is recorded in the forecast JSON.</p>
+<p class="muted">Disagree with an assumption? Edit one YAML value and open a PR — CI comments your
+exact forecast delta, and your track record accrues under your GitHub handle.</p>
 
 <h2>Resolutions</h2>
 {feed}
 
-<h2>Simulated backfill (walk-forward backtest)</h2>
-{backtest_html}
+<h2>Simulated backfills (walk-forward backtests)</h2>
+<p class="muted"><strong>Simulated, not frozen.</strong> Generated retroactively with as-of cutoffs
+(same code path as live authoring, no lookahead) to show what the loop produces. No timestamp proof;
+kept strictly separate from the live ledger below.</p>
+{backtests}
 
 <h2>Calibration ledger (live frozen forecasts only)</h2>
 {cal_html}
 
-<footer><p>Built {esc(today.isoformat())} by the loop. All data from primary public sources (BLS).
+<footer><p>Built {esc(today.isoformat())} by the loop. All data from primary public sources (BLS, DOL via FRED).
 Nothing here is investment advice; Waterline forecasts official statistics and reported fundamentals, never prices.</p></footer>
 </body></html>"""
 
