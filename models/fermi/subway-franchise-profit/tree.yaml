@@ -1,0 +1,121 @@
+# Fermi gallery model -- UNSCORED. This is an operating model for a
+# hypothetical single US Subway franchise, not a forecast and not investment
+# advice. No public referee reports typical franchisee profit, so freeze,
+# resolution, and calibration do not apply.
+question: How much annual economic profit does a typical US Subway franchise owner keep?
+format: usd
+name: subway-franchise-profit
+output: owner_economic_profit_usd
+unit: USD/year
+nodes:
+  orders_per_day:
+    type: assumption
+    value: {range: [70, 160]}
+    epistemic_type: guess
+    provenance: implied traffic range calibrated so midpoint is near StartupNation's $420k/year typical Subway sales estimate
+    owner: waterline-bot
+  avg_ticket_usd:
+    type: assumption
+    value: {range: [9.5, 13.5]}
+    epistemic_type: guess
+    provenance: rough current US sandwich-shop basket size; varies with local pricing and add-ons
+    owner: waterline-bot
+  open_days_per_year:
+    type: assumption
+    value: 360
+    epistemic_type: benchmarked
+    provenance: near-daily QSR operation assumption
+    owner: waterline-bot
+
+  annual_sales_usd:
+    type: transform
+    fn: product
+    inputs: [orders_per_day, avg_ticket_usd, open_days_per_year]
+
+  food_paper_pct:
+    type: assumption
+    value: {range: [0.30, 0.36]}
+    epistemic_type: benchmarked
+    provenance: StartupNation Subway owner P&L example reports food at about 33% with stores around 30-33%
+    owner: waterline-bot
+  labor_pct:
+    type: assumption
+    value: {range: [0.19, 0.30]}
+    epistemic_type: benchmarked
+    provenance: StartupNation Subway owner P&L example reports labor around 19-22%; upper end allows high-wage markets
+    owner: waterline-bot
+  occupancy_pct:
+    type: assumption
+    value: {range: [0.04, 0.12]}
+    epistemic_type: benchmarked
+    provenance: StartupNation Subway owner P&L example reports rent around 3-9%; upper end allows weaker sites
+    owner: waterline-bot
+  royalty_pct:
+    type: assumption
+    value: 0.08
+    epistemic_type: benchmarked
+    provenance: StartupNation summary of Subway Franchise Disclosure Document royalty fee
+    owner: waterline-bot
+  advertising_pct:
+    type: assumption
+    value: 0.045
+    epistemic_type: benchmarked
+    provenance: StartupNation summary of Subway Franchise Disclosure Document advertising fee
+    owner: waterline-bot
+  utilities_misc_pct:
+    type: assumption
+    value: {range: [0.06, 0.12]}
+    epistemic_type: benchmarked
+    provenance: StartupNation Subway owner P&L example reports utilities/misc at 8.5%
+    owner: waterline-bot
+
+  food_paper_cost_usd:
+    type: transform
+    fn: product
+    inputs: [annual_sales_usd, food_paper_pct]
+  labor_cost_usd:
+    type: transform
+    fn: product
+    inputs: [annual_sales_usd, labor_pct]
+  occupancy_cost_usd:
+    type: transform
+    fn: product
+    inputs: [annual_sales_usd, occupancy_pct]
+  royalty_cost_usd:
+    type: transform
+    fn: product
+    inputs: [annual_sales_usd, royalty_pct]
+  advertising_cost_usd:
+    type: transform
+    fn: product
+    inputs: [annual_sales_usd, advertising_pct]
+  utilities_misc_cost_usd:
+    type: transform
+    fn: product
+    inputs: [annual_sales_usd, utilities_misc_pct]
+
+  store_cash_flow_before_owner_labor_usd:
+    type: transform
+    fn: weighted_sum
+    inputs:
+      annual_sales_usd: 1.0
+      food_paper_cost_usd: -1.0
+      labor_cost_usd: -1.0
+      occupancy_cost_usd: -1.0
+      royalty_cost_usd: -1.0
+      advertising_cost_usd: -1.0
+      utilities_misc_cost_usd: -1.0
+
+  owner_labor_value_usd:
+    type: assumption
+    value: {range: [0, 45000]}
+    epistemic_type: guess
+    provenance: economic value of unpaid or underpaid owner shifts; zero for absentee-style ownership, higher if owner is effectively buying a job
+    owner: waterline-bot
+
+  owner_economic_profit_usd:
+    type: transform
+    fn: weighted_sum
+    inputs:
+      store_cash_flow_before_owner_labor_usd: 1.0
+      owner_labor_value_usd: -1.0

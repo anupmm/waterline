@@ -80,17 +80,24 @@ def fmt(metric: str, v: float) -> str:
 
 
 def humanize(v: float, kind: str) -> str:
+    """Fermi register: ~2 significant figures, plain words, sign before the $.
+    Precision rule (keel.md §4.2): never display more precision than the
+    inputs support — and gallery inputs are credence ranges, not data."""
+    import math
+
+    sign = "−" if v < 0 else ""
     prefix = "$" if kind == "usd" else ""
     a = abs(v)
     if a >= 1e9:
-        s = f"{v / 1e9:.1f} billion"
+        s = f"{a / 1e9:.1f} billion"
     elif a >= 1e6:
-        s = f"{v / 1e6:.1f} million"
-    elif a >= 1e3:
-        s = f"{v / 1e3:.0f} thousand"
+        s = f"{a / 1e6:.1f} million"
+    elif a >= 100:
+        r = round(a, -int(math.floor(math.log10(a))) + 1)  # 2 sig figs
+        s = f"{r:,.0f}"
     else:
-        s = f"{v:,.0f}"
-    return prefix + s
+        s = f"{a:,.0f}"
+    return sign + prefix + s
 
 
 def load_dir(d: Path) -> dict[str, dict]:
@@ -149,7 +156,7 @@ def derivation_html(model_dir: Path) -> str:
     )
 
 
-def model_details_html(model, valfmt) -> str:
+def model_details_html(model, valfmt, range_label: str = "q10 &hellip; q90") -> str:
     rows = ""
     for node in sorted(model.input_nodes, key=lambda n: n.name):
         q10, q50, q90 = (node.dist.quantile(q) for q in (0.10, 0.50, 0.90))
@@ -170,7 +177,7 @@ def model_details_html(model, valfmt) -> str:
         for t in tornado
     )
     return f"""
-    <table><tr><th>assumption</th><th>status</th><th>q10 &hellip; q90</th><th>where it comes from</th></tr>{rows}</table>
+    <table><tr><th>assumption</th><th>status</th><th>{range_label}</th><th>where it comes from</th></tr>{rows}</table>
     <p class="muted" style="margin-top:.8rem">Sensitivity — how much the answer moves if one assumption
     slides from its own q10 to q90:</p>
     <div class="tornado">{bars}</div>"""
@@ -312,15 +319,15 @@ exact forecast delta, and your track record accrues under your GitHub handle.</p
 <p class="topic">Fermi gallery</p>
 <h2>{esc(doc.get('question', doc['name']))}</h2>
 <div class="answer">
-  <span class="big">{vf(p['p50'])}</span>
-  <span class="band">80% band: {vf(p['p10'])} to {vf(p['p90'])}</span>
+  <span class="big">&asymp; {vf(p['p50'])}</span>
+  <span class="band">plausibly {vf(p['p10'])} to {vf(p['p90'])}</span>
   <span class="chip">unscored &mdash; no referee</span>
 </div>
 <p class="when">Computable, not observable: no official number will ever settle this, so it is
 never frozen or scored. It exists to be inspected and forked.</p>
 <details><summary>The decomposition — driver tree and how it was derived</summary>
 {tree_html(model)}
-{model_details_html(model, vf)}
+{model_details_html(model, vf, range_label="plausible low &hellip; high")}
 {derivation_html(tree.parent)}
 <p class="muted"><a href="{REPO}/blob/main/models/fermi/{esc(tree.parent.name)}/tree.yaml">tree.yaml</a>
 &mdash; disagree with a guess? Fork it.</p>
