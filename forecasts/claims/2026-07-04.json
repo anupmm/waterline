@@ -1,0 +1,87 @@
+{
+ "metric": "claims",
+ "period": "2026-07-04",
+ "release_date": "2026-07-09",
+ "frozen_at": "2026-07-08T16:08:16Z",
+ "seed": 20260702,
+ "n_draws": 10000,
+ "percentiles": {
+  "p10": 208847.79415490953,
+  "p50": 221756.84105040043,
+  "p90": 235525.037683394
+ },
+ "inputs": {
+  "base_4wk": {
+   "spec": {
+    "kind": "point",
+    "params": [
+     221500.0
+    ]
+   },
+   "q10": 221500.0,
+   "q50": 221500.0,
+   "q90": 221500.0,
+   "epistemic_type": "data_bound",
+   "provenance": "median of SA weeks 2026-06-06..2026-06-27"
+  },
+  "drift": {
+   "spec": {
+    "kind": "lognormal",
+    "params": [
+     0.0026728431623759853,
+     0.04705386628230354
+    ]
+   },
+   "q10": 0.944,
+   "q50": 1.0026764183922947,
+   "q90": 1.065,
+   "epistemic_type": "benchmarked",
+   "provenance": "trailing-52wk empirical p10/p90 of actual/base ratios"
+  }
+ },
+ "tornado": [
+  {
+   "node": "drift",
+   "spread": 26801.5,
+   "epistemic_type": "benchmarked"
+  }
+ ],
+ "authored_doc": {
+  "name": "us-initial-claims-sa",
+  "output": "claims",
+  "unit": "persons",
+  "nodes": {
+   "base_4wk": {
+    "type": "data_bound",
+    "value": 221500.0,
+    "source": "fred.ICSA",
+    "provenance": "median of SA weeks 2026-06-06..2026-06-27"
+   },
+   "drift": {
+    "type": "assumption",
+    "value": {
+     "range": [
+      0.944,
+      1.065
+     ]
+    },
+    "epistemic_type": "benchmarked",
+    "provenance": "trailing-52wk empirical p10/p90 of actual/base ratios",
+    "owner": "waterline-bot"
+   },
+   "claims": {
+    "type": "transform",
+    "fn": "product",
+    "inputs": [
+     "base_4wk",
+     "drift"
+    ]
+   }
+  }
+ },
+ "git_commit": "b7bebeb91d3f7b0e77a0c877eb21f5439ac06df6",
+ "baselines": {
+  "naive_last": 215000.0,
+  "mean_4wk": 222000.0
+ }
+}
