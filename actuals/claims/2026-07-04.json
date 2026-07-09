@@ -1,0 +1,35 @@
+{
+ "metric": "claims",
+ "period": "2026-07-04",
+ "resolved_at": "2026-07-09T16:36:08Z",
+ "source": "DOL weekly UI claims release (SA initial claims), retrieved via FRED ICSA",
+ "actual": 215000.0,
+ "frozen": {
+  "p10": 208847.79415490953,
+  "p50": 221756.84105040043,
+  "p90": 235525.037683394,
+  "frozen_at": "2026-07-08T16:08:16Z"
+ },
+ "error": -6756.841050400428,
+ "in_interval": true,
+ "attribution": {
+  "components": {
+   "drift": {
+    "frozen_q50": 1.0026764183922947,
+    "realized": 0.9706546275395034,
+    "note": "realized week-over-base ratio vs assumed"
+   }
+  },
+  "unexplained": 0.0
+ },
+ "baselines": {
+  "naive_last": {
+   "forecast": 215000.0,
+   "error": 0.0
+  },
+  "mean_4wk": {
+   "forecast": 222000.0,
+   "error": -7000.0
+  }
+ }
+}
