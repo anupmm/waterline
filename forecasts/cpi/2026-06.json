@@ -1,0 +1,106 @@
+{
+ "metric": "cpi",
+ "period": "2026-06",
+ "release_date": "2026-07-14",
+ "frozen_at": "2026-07-11T15:10:32Z",
+ "seed": 20260702,
+ "n_draws": 10000,
+ "percentiles": {
+  "p10": 0.15176406127470876,
+  "p50": 0.23017009088526727,
+  "p90": 0.31658657517475997
+ },
+ "inputs": {
+  "shelter_mom": {
+   "spec": {
+    "kind": "lognormal",
+    "params": [
+     -1.2463887720842848,
+     0.23782127884672533
+    ]
+   },
+   "q10": 0.21199999999999997,
+   "q50": 0.28754130138121026,
+   "q90": 0.39,
+   "epistemic_type": "benchmarked",
+   "provenance": "trailing-12m empirical p10/p90 of BLS CUSR0000SAH1, 2025-04..2026-05, authored 2026-07-02",
+   "weight": 0.5174
+  },
+  "supercore_mom": {
+   "spec": {
+    "kind": "lognormal",
+    "params": [
+     -1.2780939258964819,
+     0.28231653235785104
+    ]
+   },
+   "q10": 0.194,
+   "q50": 0.2785677655436824,
+   "q90": 0.4000000000000001,
+   "epistemic_type": "benchmarked",
+   "provenance": "trailing-12m empirical p10/p90 of BLS CUSR0000SASL2RS, 2025-04..2026-05, authored 2026-07-02",
+   "weight": 0.1927
+  },
+  "core_goods_mom": {
+   "spec": {
+    "kind": "normal",
+    "params": [
+     0.0905,
+     0.09480695374779403
+    ]
+   },
+   "q10": -0.031000000000000014,
+   "q50": 0.0905,
+   "q90": 0.21200000000000002,
+   "epistemic_type": "benchmarked",
+   "provenance": "trailing-12m empirical p10/p90 of BLS CUSR0000SACL1E, 2025-04..2026-05, authored 2026-07-02",
+   "weight": 0.2664
+  },
+  "decomposition_resid": {
+   "spec": {
+    "kind": "normal",
+    "params": [
+     0.0,
+     0.0446
+    ]
+   },
+   "q10": -0.0571571998232892,
+   "q50": 0.0,
+   "q90": 0.0571571998232892,
+   "epistemic_type": "benchmarked",
+   "provenance": "residual std of the weight fit, 2022-04..2026-05",
+   "weight": 1.0
+  }
+ },
+ "tornado": [
+  {
+   "node": "decomposition_resid",
+   "spread": 0.11431439964657844,
+   "epistemic_type": "benchmarked"
+  },
+  {
+   "node": "shelter_mom",
+   "spread": 0.09209720000000002,
+   "epistemic_type": "benchmarked"
+  },
+  {
+   "node": "core_goods_mom",
+   "spread": 0.06473520000000005,
+   "epistemic_type": "benchmarked"
+  },
+  {
+   "node": "supercore_mom",
+   "spread": 0.039696200000000015,
+   "epistemic_type": "benchmarked"
+  }
+ ],
+ "model_file": "models/cpi/tree.yaml",
+ "model_sha256": "2161fa251d45f7b72cdf8e7dcc8f6024d1935ef74c1e9208c6716fba95a9c7e9",
+ "git_commit": "76bece75e6c6118835828e1fc9a524a70d50bee0",
+ "weights": {
+  "shelter_mom": 0.5174,
+  "supercore_mom": 0.1927,
+  "core_goods_mom": 0.2664,
+  "decomposition_resid": 1.0
+ }
+}
